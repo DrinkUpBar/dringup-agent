@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DrinkUp Chat Test Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 800px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .chat-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+        }
+
+        .settings-panel {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .settings-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .settings-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .settings-row input, .settings-row textarea {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .settings-row textarea {
+            resize: vertical;
+            min-height: 40px;
+            max-height: 80px;
+        }
+
+        .settings-row label {
+            min-width: 100px;
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #fafafa;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            text-align: right;
+        }
+
+        .message-content {
+            display: inline-block;
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .message.system {
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            margin: 10px 0;
+        }
+
+        .tool-execution {
+            background: #f0f9ff;
+            border-left: 3px solid #3b82f6;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-size: 13px;
+        }
+
+        .tool-thinking {
+            background: #fef3c7;
+            border-left: 3px solid #f59e0b;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-size: 13px;
+        }
+
+        .tool-result {
+            background: #d1fae5;
+            border-left: 3px solid #10b981;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            display: inline-block;
+        }
+
+        .typing-indicator.active {
+            display: inline-block;
+        }
+
+        .typing-indicator span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #999;
+            margin: 0 2px;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .chat-input-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .send-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .send-button:active {
+            transform: translateY(0);
+        }
+
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c00;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+
+        .usage-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            padding: 5px 10px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            display: inline-block;
+        }
+
+        .raw-output-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+
+        .raw-output-toggle:hover {
+            transform: scale(1.05);
+        }
+
+        .raw-output-panel {
+            position: fixed;
+            right: -500px;
+            top: 0;
+            width: 500px;
+            height: 100vh;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            transition: right 0.3s ease;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -5px 0 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .raw-output-panel.open {
+            right: 0;
+        }
+
+        .raw-output-header {
+            background: #2d2d2d;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #444;
+        }
+
+        .raw-output-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .raw-output-close {
+            cursor: pointer;
+            font-size: 24px;
+            color: #999;
+            transition: color 0.2s;
+        }
+
+        .raw-output-close:hover {
+            color: white;
+        }
+
+        .raw-output-controls {
+            padding: 10px;
+            background: #2d2d2d;
+            border-bottom: 1px solid #444;
+            display: flex;
+            gap: 10px;
+        }
+
+        .raw-output-clear {
+            padding: 5px 10px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .raw-output-copy {
+            padding: 5px 10px;
+            background: #388e3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .raw-output-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .raw-output-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .raw-output-content::-webkit-scrollbar-track {
+            background: #2d2d2d;
+        }
+
+        .raw-output-content::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        .raw-event {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #2d2d2d;
+            border-radius: 5px;
+            border-left: 3px solid #4a9eff;
+        }
+
+        .raw-event-type {
+            color: #4a9eff;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .raw-event-data {
+            color: #a9dc76;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .raw-event-time {
+            color: #666;
+            font-size: 10px;
+            margin-top: 5px;
+        }
+
+        /* Scrollbar styling */
+        .chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="status-indicator"></div>
+            <h1>🍹 DrinkUp Chat Test</h1>
+        </div>
+        
+        <div class="settings-panel">
+            <div class="settings-row">
+                <label>User ID:</label>
+                <input type="text" id="userId" value="1" placeholder="Enter user ID">
+                <label>Conv ID:</label>
+                <input type="text" id="conversationId" value="" placeholder="Auto-generate if empty">
+            </div>
+            <div class="settings-row">
+                <label>User Stock:</label>
+                <textarea id="userStock" placeholder="e.g., Gin, Vodka, Rum, Tequila, Lime juice...">Gin, Vodka, Rum, Tequila, Triple sec, Lime juice, Lemon juice, Simple syrup</textarea>
+            </div>
+            <div class="settings-row">
+                <label>User Info:</label>
+                <textarea id="userInfo" placeholder="e.g., Prefers sweet cocktails, likes fruity flavors...">user_id: 1</textarea>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="message system">
+                <div class="message-content">
+                    Welcome! This is a test interface for the DrinkUp streaming chat API. Start chatting below!
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-input-container">
+            <form class="chat-input-form" id="chatForm">
+                <input 
+                    type="text" 
+                    class="chat-input" 
+                    id="chatInput" 
+                    placeholder="Type your message here..."
+                    autocomplete="off"
+                >
+                <button type="submit" class="send-button" id="sendButton">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Raw Output Toggle Button -->
+    <div class="raw-output-toggle" id="rawOutputToggle">
+        📝 Raw Output
+    </div>
+
+    <!-- Raw Output Panel -->
+    <div class="raw-output-panel" id="rawOutputPanel">
+        <div class="raw-output-header">
+            <div class="raw-output-title">🔍 Raw SSE Output</div>
+            <div class="raw-output-close" id="rawOutputClose">×</div>
+        </div>
+        <div class="raw-output-controls">
+            <button class="raw-output-clear" id="rawOutputClear">Clear</button>
+            <button class="raw-output-copy" id="rawOutputCopy">Copy All</button>
+        </div>
+        <div class="raw-output-content" id="rawOutputContent"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8001/api/workflow/chat/v2/stream';
+        const chatMessages = document.getElementById('chatMessages');
+        const chatForm = document.getElementById('chatForm');
+        const chatInput = document.getElementById('chatInput');
+        const sendButton = document.getElementById('sendButton');
+        const userIdInput = document.getElementById('userId');
+        const conversationIdInput = document.getElementById('conversationId');
+        const userStockInput = document.getElementById('userStock');
+        const userInfoInput = document.getElementById('userInfo');
+        const rawOutputToggle = document.getElementById('rawOutputToggle');
+        const rawOutputPanel = document.getElementById('rawOutputPanel');
+        const rawOutputClose = document.getElementById('rawOutputClose');
+        const rawOutputClear = document.getElementById('rawOutputClear');
+        const rawOutputCopy = document.getElementById('rawOutputCopy');
+        const rawOutputContent = document.getElementById('rawOutputContent');
+
+        let currentMessageDiv = null;
+        let currentContentDiv = null;
+        let isStreaming = false;
+        let rawOutputData = [];
+        let lastEventType = null;
+
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addMessage(content, sender = 'user') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+            
+            messageDiv.appendChild(contentDiv);
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+            
+            return { messageDiv, contentDiv };
+        }
+
+        function addSystemMessage(content, className = '') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = className || 'message system';
+            messageDiv.innerHTML = `<div class="message-content">${content}</div>`;
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        function addToolThinking(toolCalls) {
+            const div = document.createElement('div');
+            div.className = 'tool-thinking';
+            const toolInfo = toolCalls.map(tc => {
+                const args = tc.args ? JSON.stringify(tc.args, null, 2) : '{}';
+                return `🤔 Thinking: Using tool <strong>${tc.name}</strong>\nArguments: ${args}`;
+            }).join('\n\n');
+            div.innerHTML = toolInfo;
+            chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        function addToolResult(tool, result) {
+            const div = document.createElement('div');
+            div.className = 'tool-result';
+            div.innerHTML = `🔧 Tool Result from <strong>${tool}</strong>:\n${result}`;
+            chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        function addUsageInfo(usage) {
+            if (!usage) return;
+            const div = document.createElement('div');
+            div.className = 'usage-info';
+            div.textContent = `Tokens: ${usage.prompt_tokens} prompt + ${usage.completion_tokens} completion = ${usage.total_tokens} total`;
+            chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        function addErrorMessage(error) {
+            const div = document.createElement('div');
+            div.className = 'error-message';
+            div.textContent = `Error: ${error}`;
+            chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        function addRawEvent(eventType, data) {
+            const timestamp = new Date().toLocaleTimeString();
+            const eventDiv = document.createElement('div');
+            eventDiv.className = 'raw-event';
+            
+            const typeDiv = document.createElement('div');
+            typeDiv.className = 'raw-event-type';
+            typeDiv.textContent = `Event: ${eventType}`;
+            
+            const dataDiv = document.createElement('div');
+            dataDiv.className = 'raw-event-data';
+            dataDiv.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'raw-event-time';
+            timeDiv.textContent = timestamp;
+            
+            eventDiv.appendChild(typeDiv);
+            eventDiv.appendChild(dataDiv);
+            eventDiv.appendChild(timeDiv);
+            
+            rawOutputContent.appendChild(eventDiv);
+            rawOutputContent.scrollTop = rawOutputContent.scrollHeight;
+            
+            // Store for copy functionality
+            rawOutputData.push({
+                time: timestamp,
+                event: eventType,
+                data: data
+            });
+        }
+
+        async function sendMessage(message) {
+            if (isStreaming) return;
+            
+            isStreaming = true;
+            sendButton.disabled = true;
+            sendButton.textContent = 'Sending...';
+            
+            // Add user message
+            addMessage(message, 'user');
+            
+            // Prepare request
+            const conversationId = conversationIdInput.value || `conv_${Date.now()}`;
+            if (!conversationIdInput.value) {
+                conversationIdInput.value = conversationId;
+            }
+            
+            const requestBody = {
+                userMessage: message,
+                userId: userIdInput.value || 'test_user',
+                conversationId: conversationId,
+                params: {
+                    userStock: userStockInput.value || '',
+                    userInfo: userInfoInput.value || ''
+                }
+            };
+            
+            // Create assistant message container
+            currentMessageDiv = document.createElement('div');
+            currentMessageDiv.className = 'message assistant';
+            currentContentDiv = document.createElement('div');
+            currentContentDiv.className = 'message-content';
+            currentContentDiv.textContent = '';
+            currentMessageDiv.appendChild(currentContentDiv);
+            chatMessages.appendChild(currentMessageDiv);
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i];
+                        if (line.startsWith('event: ')) {
+                            const eventType = line.substring(7).trim();
+                            
+                            // Get the next line which should be data
+                            if (i + 1 < lines.length && lines[i + 1].startsWith('data: ')) {
+                                const dataStr = lines[i + 1].substring(6).trim();
+                                if (dataStr) {
+                                    // Add raw event to panel
+                                    addRawEvent(eventType, dataStr);
+                                    
+                                    try {
+                                        const data = JSON.parse(dataStr);
+                                        
+                                        switch (eventType) {
+                                            case 'streaming_content':
+                                                if (data.content) {
+                                                    // If there was a non-streaming event between streaming events, create a new bubble
+                                                    if (lastEventType && lastEventType !== 'streaming_content') {
+                                                        // Create a new assistant message bubble
+                                                        currentMessageDiv = document.createElement('div');
+                                                        currentMessageDiv.className = 'message assistant';
+                                                        currentContentDiv = document.createElement('div');
+                                                        currentContentDiv.className = 'message-content';
+                                                        currentContentDiv.textContent = '';
+                                                        currentMessageDiv.appendChild(currentContentDiv);
+                                                        chatMessages.appendChild(currentMessageDiv);
+                                                    }
+                                                    
+                                                    currentContentDiv.textContent += data.content;
+                                                    scrollToBottom();
+                                                }
+                                                break;
+                                            
+                                            case 'agent_thinking':
+                                                if (data.tool_calls) {
+                                                    addToolThinking(data.tool_calls);
+                                                }
+                                                break;
+                                            
+                                            case 'tool_result':
+                                                if (data.tool && data.result) {
+                                                    addToolResult(data.tool, data.result);
+                                                }
+                                                break;
+                                            
+                                            case 'final_response':
+                                                if (data.usage) {
+                                                    addUsageInfo(data.usage);
+                                                }
+                                                break;
+                                            
+                                            case 'error':
+                                                addErrorMessage(data.message || data.error || 'Unknown error');
+                                                break;
+                                        }
+                                        
+                                        // Track the last event type
+                                        lastEventType = eventType;
+                                    } catch (e) {
+                                        console.error('Error parsing data:', e, dataStr);
+                                    }
+                                }
+                                // Skip the data line since we've already processed it
+                                i++;
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                addErrorMessage(error.message);
+            } finally {
+                isStreaming = false;
+                sendButton.disabled = false;
+                sendButton.textContent = 'Send';
+                currentMessageDiv = null;
+                currentContentDiv = null;
+                lastEventType = null;
+            }
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const message = chatInput.value.trim();
+            if (message && !isStreaming) {
+                chatInput.value = '';
+                await sendMessage(message);
+            }
+        });
+
+        // Auto-focus input
+        chatInput.focus();
+
+        // Raw output panel controls
+        rawOutputToggle.addEventListener('click', () => {
+            rawOutputPanel.classList.add('open');
+        });
+
+        rawOutputClose.addEventListener('click', () => {
+            rawOutputPanel.classList.remove('open');
+        });
+
+        rawOutputClear.addEventListener('click', () => {
+            rawOutputContent.innerHTML = '';
+            rawOutputData = [];
+        });
+
+        rawOutputCopy.addEventListener('click', () => {
+            const text = rawOutputData.map(item => {
+                return `[${item.time}] ${item.event}:\n${typeof item.data === 'string' ? item.data : JSON.stringify(item.data, null, 2)}`;
+            }).join('\n\n');
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = rawOutputCopy.textContent;
+                rawOutputCopy.textContent = 'Copied!';
+                setTimeout(() => {
+                    rawOutputCopy.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        });
+    </script>
+</body>
+</html>
