@@ -3,6 +3,17 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 
+# Load .env into process env so third-party libs (e.g., LangSmith/LangChain)
+# can read variables directly from the environment as well.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    # If python-dotenv is not available, pydantic-settings will still read
+    # values from the .env file for this Settings model.
+    pass
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -11,6 +22,13 @@ class Settings(BaseSettings):
     openai_api_key: str
     openai_model: str = "gpt-4o-mini"
     openai_base_url: Optional[str] = None
+
+    # LangSmith / LangChain Tracing Configuration
+    # When enabled, LangChain will send traces to LangSmith
+    langsmith_tracing: bool = False
+    langsmith_endpoint: Optional[str] = "https://api.smith.langchain.com"
+    langsmith_api_key: Optional[str] = None
+    langsmith_project: Optional[str] = "drinkup-dev"
 
     # Mem0 Configuration (Optional - enables memory tools when provided)
     mem0_api_key: Optional[str] = None

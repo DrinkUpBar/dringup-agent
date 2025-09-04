@@ -117,6 +117,14 @@ Respond naturally without JSON formatting."""
             conversation_id = str(uuid.uuid4())
 
         try:
+            # Prepare a LangChain/LangSmith run config so all runs carry the same thread ID
+            # This enables grouping runs into a single LangSmith Thread.
+            run_config = {
+                "metadata": {
+                    "ls_thread_id": conversation_id,  # LangSmith-recognized thread id
+                    "conversation_id": conversation_id,  # Also store for convenience/queries
+                }
+            }
             # Prepare chat history (past conversation + current user message)
             past_messages = await self.conversation_service.get_messages(conversation_id)
             chat_history = self._convert_history_to_langchain(past_messages)
@@ -142,7 +150,7 @@ Respond naturally without JSON formatting."""
             usage_data = None
             finish_reason = None
 
-            async for chunk in llm_with_tools.astream(messages_with_system):
+            async for chunk in llm_with_tools.astream(messages_with_system, config=run_config):
                 logger.info(f"Chunk: {chunk}")
                 if accumulated_message is None:
                     accumulated_message = chunk
@@ -197,7 +205,7 @@ Respond naturally without JSON formatting."""
                     None,
                     None,
                 )
-                async for chunk in self.llm.astream(messages_with_system):
+                async for chunk in self.llm.astream(messages_with_system, config=run_config):
                     if hasattr(chunk, "response_metadata") and chunk.response_metadata:
                         final_finish_reason = chunk.response_metadata.get("finish_reason")
                     if hasattr(chunk, "usage_metadata"):
@@ -332,7 +340,15 @@ Respond naturally without JSON formatting."""
         # Execute using ToolNode when available, otherwise manual fallback
         if ToolNode is not None:
             tool_node = ToolNode(tools)
-            tool_results = await tool_node.ainvoke({"messages": messages_with_system}, {"configurable": {}})
+            # Propagate LangSmith thread metadata into tool execution
+            tool_run_config = {
+                "configurable": {},
+                "metadata": {
+                    "ls_thread_id": conversation_id,
+                    "conversation_id": conversation_id,
+                },
+            }
+            tool_results = await tool_node.ainvoke({"messages": messages_with_system}, tool_run_config)
         else:
             tool_messages: List[ToolMessage] = []
             for tc in getattr(accumulated_message, "tool_calls", []) or []:
@@ -352,7 +368,13 @@ Respond naturally without JSON formatting."""
                 else:
                     try:
                         if hasattr(selected, "ainvoke"):
-                            result = await selected.ainvoke(tool_args)
+                            # Pass metadata so tool run is associated to the same thread
+                            result = await selected.ainvoke(tool_args, config={
+                                "metadata": {
+                                    "ls_thread_id": conversation_id,
+                                    "conversation_id": conversation_id,
+                                }
+                            })
                         elif hasattr(selected, "arun"):
                             result = await selected.arun(**tool_args)
                         else:
