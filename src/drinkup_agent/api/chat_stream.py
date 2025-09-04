@@ -24,34 +24,71 @@ async def chat_stream(request: Dict[str, Any]):
     - final_response: The final response from the agent
     - error: If an error occurs
     """
+    # 在函数开始时就打印请求体信息
+    logger.info("=" * 50)
+    logger.info("Received POST request to /api/workflow/chat/v2/stream")
+    logger.info(f"Request type: {type(request)}")
+    logger.info(
+        f"Request keys: {list(request.keys()) if isinstance(request, dict) else 'Not a dict'}"
+    )
+    logger.info(
+        f"Raw request body: {json.dumps(request, indent=2, ensure_ascii=False)}"
+    )
+    logger.info("=" * 50)
+
     agent_service = StreamingLangGraphAgentService()
 
     async def event_generator():
         """Generate SSE events from the agent stream."""
         try:
-            # Log raw request to understand structure
-            logger.info(f"Raw streaming request: {json.dumps(request, indent=2)}")
+            # 详细记录请求结构分析
+            logger.info("Analyzing request structure:")
+            logger.info(
+                f"- userMessage/user_message: {request.get('userMessage', request.get('user_message', 'NOT_FOUND'))}"
+            )
+            logger.info(
+                f"- userId/user_id: {request.get('userId', request.get('user_id', 'NOT_FOUND'))}"
+            )
+            logger.info(
+                f"- conversationId/conversation_id: {request.get('conversationId', request.get('conversation_id', 'NOT_FOUND'))}"
+            )
+            logger.info(f"- params: {request.get('params', 'NOT_FOUND')}")
 
             # Convert to ChatV2Request model
             # Handle camelCase to snake_case conversion
-            chat_request = ChatV2Request(
-                user_message=request.get(
-                    "userMessage", request.get("user_message", "")
-                ),
-                user_id=request.get("userId", request.get("user_id", "default_user")),
-                conversation_id=request.get(
-                    "conversationId", request.get("conversation_id")
-                ),
-                params=ChatParams(
-                    user_stock=request.get("params", {}).get("userStock", ""),
-                    user_info=request.get("params", {}).get("userInfo", ""),
-                    image_attachment_list=request.get("params", {}).get(
-                        "imageAttachmentList"
+            logger.info("Converting to ChatV2Request model...")
+            try:
+                chat_request = ChatV2Request(
+                    user_message=request.get(
+                        "userMessage", request.get("user_message", "")
                     ),
+                    user_id=request.get(
+                        "userId", request.get("user_id", "default_user")
+                    ),
+                    conversation_id=request.get(
+                        "conversationId", request.get("conversation_id")
+                    ),
+                    params=ChatParams(
+                        user_stock=request.get("params", {}).get("userStock", ""),
+                        user_info=request.get("params", {}).get("userInfo", ""),
+                        image_attachment_list=request.get("params", {}).get(
+                            "imageAttachmentList"
+                        ),
+                    )
+                    if "params" in request
+                    else ChatParams(),
                 )
-                if "params" in request
-                else ChatParams(),
-            )
+                logger.info("Successfully converted to ChatV2Request model")
+                logger.info(f"Converted model: {chat_request.model_dump()}")
+            except Exception as conversion_error:
+                logger.error(
+                    f"Error converting to ChatV2Request model: {conversion_error}"
+                )
+                logger.error(f"Conversion error type: {type(conversion_error)}")
+                import traceback
+
+                logger.error(f"Conversion traceback: {traceback.format_exc()}")
+                raise
 
             # Extract request parameters
             user_message = chat_request.user_message
@@ -87,11 +124,23 @@ async def chat_stream(request: Dict[str, Any]):
                     break
 
         except Exception as e:
-            logger.error(f"Error in chat stream: {e}")
+            import traceback
+
+            logger.error("=" * 50)
+            logger.error("ERROR in chat stream:")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error message: {str(e)}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error(
+                f"Original request that caused error: {json.dumps(request, indent=2, ensure_ascii=False)}"
+            )
+            logger.error("=" * 50)
+
             error_event = {
                 "type": "error",
                 "data": {
                     "error": str(e),
+                    "error_type": str(type(e)),
                     "message": "An error occurred while processing your request",
                 },
             }
