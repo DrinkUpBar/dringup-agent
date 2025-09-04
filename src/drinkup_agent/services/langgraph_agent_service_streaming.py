@@ -190,13 +190,19 @@ Respond naturally without JSON formatting."""
             is_tool_call = False
             accumulated_message = None
             usage_data = None  # Store usage data from OpenAI
+            finish_reason = None  # Track finish reason
 
             async for chunk in llm_with_tools.astream(messages_with_system):
+                logger.info(f"Chunk: {chunk}")
                 # Accumulate the message chunks
                 if accumulated_message is None:
                     accumulated_message = chunk
                 else:
                     accumulated_message += chunk
+
+                # Check for finish_reason in response_metadata
+                if hasattr(chunk, "response_metadata") and chunk.response_metadata:
+                    finish_reason = chunk.response_metadata.get("finish_reason")
 
                 # Check for usage data in chunk (OpenAI returns this in the final chunk)
                 if hasattr(chunk, "usage_metadata"):
@@ -222,6 +228,15 @@ Respond naturally without JSON formatting."""
                         "data": {"content": content_chunk},
                     }
 
+            # After streaming is complete, check finish_reason
+            # Emit final_message if finish_reason is 'stop' or 'tool_calls' with content
+            if finish_reason in ["stop", "tool_calls"] and full_content:
+                # Send final_message with the accumulated content
+                yield {
+                    "type": "final_message",
+                    "data": {"content": full_content},
+                }
+
             # After streaming is complete, yield tool calls if any
             if (
                 is_tool_call
@@ -245,6 +260,9 @@ Respond naturally without JSON formatting."""
                         "type": "agent_thinking",
                         "data": {"tool_calls": tool_calls_data},
                     }
+                
+                # Don't emit final_message when finish_reason is 'tool_calls' 
+                # since there's no content to send
 
             # If tool calls were made, execute them
             if (
@@ -334,7 +352,13 @@ Respond naturally without JSON formatting."""
                 # Get final response after tool execution
                 full_content = ""
                 final_usage_data = None  # Store usage data for final response
+                final_finish_reason = None  # Track finish reason for final response
+                
                 async for chunk in self.llm.astream(messages_with_system):
+                    # Check for finish_reason in response_metadata
+                    if hasattr(chunk, "response_metadata") and chunk.response_metadata:
+                        final_finish_reason = chunk.response_metadata.get("finish_reason")
+                    
                     # Check for usage data in chunk
                     if hasattr(chunk, "usage_metadata"):
                         final_usage_data = chunk.usage_metadata
@@ -352,6 +376,13 @@ Respond naturally without JSON formatting."""
                             "type": "streaming_content",
                             "data": {"content": content_chunk},
                         }
+                
+                # Emit final_message after tool execution response
+                if final_finish_reason == "stop":
+                    yield {
+                        "type": "final_message", 
+                        "data": {"content": full_content},
+                    }
 
                 # Merge usage data from both responses if tool was called
                 if usage_data and final_usage_data:

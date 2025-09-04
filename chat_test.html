@@ -163,11 +163,13 @@
 
         .tool-thinking {
             background: #fef3c7;
-            border-left: 3px solid #f59e0b;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            font-size: 13px;
+            border-left: 4px solid #f59e0b;
+            padding: 12px;
+            margin: 15px 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+            animation: slideIn 0.3s ease-out;
         }
 
         .tool-result {
@@ -179,7 +181,19 @@
             font-size: 13px;
         }
         
-        .tool-thinking pre,
+        .tool-thinking pre {
+            margin: 8px 0;
+            padding: 10px;
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 12px;
+            color: #92400e;
+        }
+        
         .tool-result pre {
             margin: 5px 0;
             padding: 8px;
@@ -280,6 +294,55 @@
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
+        }
+
+        .reset-button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .reset-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .reset-button:active {
+            transform: translateY(0);
+        }
+
+        .reset-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .memory-save-result {
+            background: #e0f2fe;
+            border: 1px solid #0284c7;
+            color: #0c4a6e;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px;
+            font-size: 14px;
+        }
+
+        .memory-save-result.success {
+            background: #dcfce7;
+            border-color: #16a34a;
+            color: #14532d;
+        }
+
+        .memory-save-result.error {
+            background: #fee2e2;
+            border-color: #dc2626;
+            color: #7f1d1d;
         }
 
         .error-message {
@@ -501,6 +564,7 @@
                     autocomplete="off"
                 >
                 <button type="submit" class="send-button" id="sendButton">Send</button>
+                <button type="button" class="reset-button" id="resetButton">🔄 Reset & Save to Memory</button>
             </form>
         </div>
     </div>
@@ -525,10 +589,12 @@
 
     <script>
         const API_URL = 'http://localhost:8001/api/workflow/chat/v2/stream';
+        const MEMORY_SAVE_URL = 'http://localhost:8001/api/workflow/conversation/save-to-memory';
         const chatMessages = document.getElementById('chatMessages');
         const chatForm = document.getElementById('chatForm');
         const chatInput = document.getElementById('chatInput');
         const sendButton = document.getElementById('sendButton');
+        const resetButton = document.getElementById('resetButton');
         const userIdInput = document.getElementById('userId');
         const conversationIdInput = document.getElementById('conversationId');
         const userStockInput = document.getElementById('userStock');
@@ -545,6 +611,8 @@
         let isStreaming = false;
         let rawOutputData = [];
         let lastEventType = null;
+        let currentAssistantMessage = null; // Track current assistant message session
+        let allStreamingDivs = []; // Track all streaming divs to update them later
 
         function scrollToBottom() {
             chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -574,6 +642,7 @@
         }
 
         function addToolThinking(data) {
+            console.log('addToolThinking called with:', data);
             const div = document.createElement('div');
             div.className = 'tool-thinking';
             
@@ -581,21 +650,76 @@
             
             // Handle both tool_calls array and direct data
             if (data.tool_calls && Array.isArray(data.tool_calls)) {
+                console.log('Processing tool_calls array:', data.tool_calls);
                 const toolInfo = data.tool_calls.map(tc => {
-                    const args = tc.args ? JSON.stringify(tc.args, null, 2) : '{}';
-                    return `🤔 Thinking: Using tool <strong>${tc.name || tc.tool}</strong><br>Arguments: <pre>${args}</pre>`;
-                }).join('<br><br>');
+                    let argsDisplay = '';
+                    if (tc.args) {
+                        // Format and escape the arguments
+                        const argsStr = JSON.stringify(tc.args, null, 2);
+                        // Escape HTML
+                        const escapedArgs = argsStr
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#039;');
+                        
+                        // Truncate if too long
+                        const maxLength = 500;
+                        if (escapedArgs.length > maxLength) {
+                            argsDisplay = escapedArgs.substring(0, maxLength) + '...\n}';
+                        } else {
+                            argsDisplay = escapedArgs;
+                        }
+                    } else {
+                        argsDisplay = '{}';
+                    }
+                    return `🤔 Thinking: Using tool <strong>${tc.name || tc.tool}</strong><br>Arguments: <pre>${argsDisplay}</pre>`;
+                }).join('<br>');
                 content = toolInfo;
-            } else if (data.tool) {
-                // Handle single tool call
-                const args = data.args ? JSON.stringify(data.args, null, 2) : '{}';
-                content = `🤔 Thinking: Using tool <strong>${data.tool}</strong><br>Arguments: <pre>${args}</pre>`;
+            } else if (data.tool || data.name) {
+                // Handle single tool call (check both 'tool' and 'name' properties)
+                const toolName = data.tool || data.name;
+                console.log('Processing single tool call:', toolName);
+                
+                let argsDisplay = '{}';
+                if (data.args) {
+                    const argsStr = JSON.stringify(data.args, null, 2);
+                    const escapedArgs = argsStr
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#039;');
+                    
+                    const maxLength = 500;
+                    if (escapedArgs.length > maxLength) {
+                        argsDisplay = escapedArgs.substring(0, maxLength) + '...\n}';
+                    } else {
+                        argsDisplay = escapedArgs;
+                    }
+                }
+                
+                content = `🤔 Thinking: Using tool <strong>${toolName}</strong><br>Arguments: <pre>${argsDisplay}</pre>`;
             } else if (data.content) {
                 // Handle thinking content
-                content = `🤔 ${data.content}`;
+                console.log('Processing thinking content:', data.content);
+                // Escape HTML in content
+                const escapedContent = data.content
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                content = `🤔 ${escapedContent}`;
             } else {
                 // Fallback to showing raw data
-                content = `🤔 Thinking: <pre>${JSON.stringify(data, null, 2)}</pre>`;
+                console.log('Fallback - showing raw data');
+                const escapedData = JSON.stringify(data, null, 2)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+                content = `🤔 Thinking: <pre>${escapedData}</pre>`;
             }
             
             div.innerHTML = content;
@@ -606,8 +730,36 @@
         function addToolResult(tool, result) {
             const div = document.createElement('div');
             div.className = 'tool-result';
-            const resultText = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-            div.innerHTML = `🔧 Tool Result from <strong>${tool}</strong>:<br><pre>${resultText}</pre>`;
+            
+            // Try to parse the result if it's a JSON string
+            let displayResult = result;
+            if (typeof result === 'string') {
+                try {
+                    const parsed = JSON.parse(result);
+                    displayResult = JSON.stringify(parsed, null, 2);
+                } catch (e) {
+                    // If it's not valid JSON, use it as is
+                    displayResult = result;
+                }
+            } else {
+                displayResult = JSON.stringify(result, null, 2);
+            }
+            
+            // Truncate very long results for better display
+            const maxLength = 1000;
+            if (displayResult.length > maxLength) {
+                displayResult = displayResult.substring(0, maxLength) + '...\n[Truncated for display]';
+            }
+            
+            // Escape HTML to prevent rendering issues
+            const escapedResult = displayResult
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            
+            div.innerHTML = `🔧 Tool Result from <strong>${tool}</strong>:<br><pre>${escapedResult}</pre>`;
             chatMessages.appendChild(div);
             scrollToBottom();
         }
@@ -629,18 +781,171 @@
             scrollToBottom();
         }
 
+        function addMemorySaveResult(result, isSuccess = true) {
+            const div = document.createElement('div');
+            div.className = isSuccess ? 'memory-save-result success' : 'memory-save-result error';
+            
+            if (isSuccess && result) {
+                let content = `✅ <strong>Memory Save Successful!</strong><br>`;
+                content += `📝 Messages saved: ${result.messages_saved || 0}<br>`;
+                if (result.memory_ids && result.memory_ids.length > 0) {
+                    content += `🆔 Memory IDs created: ${result.memory_ids.length}<br>`;
+                    content += `<small>IDs: ${result.memory_ids.slice(0, 3).join(', ')}`;
+                    if (result.memory_ids.length > 3) {
+                        content += ` ... and ${result.memory_ids.length - 3} more`;
+                    }
+                    content += `</small>`;
+                }
+                if (result.message) {
+                    content += `<br>💬 ${result.message}`;
+                }
+                div.innerHTML = content;
+            } else if (!isSuccess && result) {
+                div.innerHTML = `❌ <strong>Memory Save Failed!</strong><br>${result.error || result}`;
+            } else {
+                div.innerHTML = `⚠️ <strong>No data to save</strong>`;
+            }
+            
+            chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        async function saveConversationToMemory() {
+            const conversationId = conversationIdInput.value;
+            const userId = userIdInput.value;
+            
+            if (!conversationId) {
+                addErrorMessage('No conversation ID found. Start a conversation first.');
+                return null;
+            }
+            
+            if (!userId) {
+                addErrorMessage('User ID is required to save memory.');
+                return null;
+            }
+            
+            try {
+                const response = await fetch(MEMORY_SAVE_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        conversationId: conversationId,
+                        userId: userId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    return data;
+                } else {
+                    throw new Error(data.detail || data.error || 'Failed to save memory');
+                }
+            } catch (error) {
+                console.error('Error saving to memory:', error);
+                throw error;
+            }
+        }
+
+        async function resetConversation() {
+            if (isStreaming) {
+                alert('Please wait for the current message to complete before resetting.');
+                return;
+            }
+            
+            const currentConvId = conversationIdInput.value;
+            
+            if (currentConvId && confirm('Save current conversation to memory before resetting?')) {
+                resetButton.disabled = true;
+                resetButton.textContent = '💾 Saving...';
+                
+                try {
+                    // Save to memory
+                    const result = await saveConversationToMemory();
+                    
+                    // Show result in chat
+                    addSystemMessage('--- Conversation Reset ---', 'message system');
+                    if (result) {
+                        addMemorySaveResult(result, true);
+                    }
+                    
+                    // Clear the conversation ID to generate a new one
+                    conversationIdInput.value = '';
+                    
+                    // Clear chat messages but keep the welcome message and save result
+                    setTimeout(() => {
+                        // Clear all messages
+                        chatMessages.innerHTML = '';
+                        
+                        // Re-add welcome message
+                        addSystemMessage('Welcome! This is a test interface for the DrinkUp streaming chat API. Start chatting below!', 'message system');
+                        
+                        // Show save result summary
+                        if (result && result.messages_saved > 0) {
+                            addSystemMessage(`Previous conversation saved: ${result.messages_saved} messages stored in memory for user ${userIdInput.value}`, 'message system');
+                        }
+                    }, 3000);
+                    
+                    // Clear raw output
+                    rawOutputContent.innerHTML = '';
+                    rawOutputData = [];
+                    
+                } catch (error) {
+                    addMemorySaveResult({ error: error.message }, false);
+                } finally {
+                    resetButton.disabled = false;
+                    resetButton.textContent = '🔄 Reset & Save to Memory';
+                }
+            } else if (!currentConvId) {
+                // Just clear if no conversation exists
+                chatMessages.innerHTML = '';
+                addSystemMessage('Welcome! This is a test interface for the DrinkUp streaming chat API. Start chatting below!', 'message system');
+                rawOutputContent.innerHTML = '';
+                rawOutputData = [];
+                conversationIdInput.value = '';
+            }
+        }
+
         function addRawEvent(eventType, data) {
             const timestamp = new Date().toLocaleTimeString();
             const eventDiv = document.createElement('div');
             eventDiv.className = 'raw-event';
             
+            // Color code based on event type
+            const eventColors = {
+                'streaming_content': '#4a9eff',
+                'agent_thinking': '#f59e0b',
+                'tool_result': '#10b981',
+                'final_response': '#8b5cf6',
+                'error': '#ef4444'
+            };
+            
+            eventDiv.style.borderLeftColor = eventColors[eventType] || '#6b7280';
+            
             const typeDiv = document.createElement('div');
             typeDiv.className = 'raw-event-type';
+            typeDiv.style.color = eventColors[eventType] || '#6b7280';
             typeDiv.textContent = `Event: ${eventType}`;
             
             const dataDiv = document.createElement('div');
             dataDiv.className = 'raw-event-data';
-            dataDiv.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            
+            // Try to parse and format JSON data if it's a string
+            let displayData = data;
+            if (typeof data === 'string') {
+                try {
+                    const parsed = JSON.parse(data);
+                    displayData = JSON.stringify(parsed, null, 2);
+                } catch (e) {
+                    displayData = data;
+                }
+            } else {
+                displayData = JSON.stringify(data, null, 2);
+            }
+            
+            dataDiv.textContent = displayData;
             
             const timeDiv = document.createElement('div');
             timeDiv.className = 'raw-event-time';
@@ -695,6 +1000,7 @@
             currentContentDiv.textContent = '';
             currentMessageDiv.appendChild(currentContentDiv);
             chatMessages.appendChild(currentMessageDiv);
+            currentAssistantMessage = currentMessageDiv; // Mark this as the current assistant message session
             
             try {
                 const response = await fetch(API_URL, {
@@ -722,52 +1028,136 @@
                     buffer = lines.pop() || '';
                     
                     for (let i = 0; i < lines.length; i++) {
-                        const line = lines[i];
-                        if (line.startsWith('event: ')) {
-                            const eventType = line.substring(7).trim();
+                        const line = lines[i].trim();
+                        if (!line) continue; // Skip empty lines
+                        
+                        if (line.startsWith('event:')) {
+                            const eventType = line.substring(6).trim();
                             
-                            // Get the next line which should be data
-                            if (i + 1 < lines.length && lines[i + 1].startsWith('data: ')) {
-                                const dataStr = lines[i + 1].substring(6).trim();
+                            // Look for the corresponding data line
+                            let dataLine = null;
+                            for (let j = i + 1; j < lines.length; j++) {
+                                const nextLine = lines[j].trim();
+                                if (!nextLine) continue; // Skip empty lines
+                                if (nextLine.startsWith('data:')) {
+                                    dataLine = nextLine;
+                                    i = j; // Update index to skip processed lines
+                                    break;
+                                }
+                            }
+                            
+                            if (dataLine) {
+                                const dataStr = dataLine.substring(5).trim();
                                 if (dataStr) {
+                                    console.log(`Processing SSE event: ${eventType}`);
+                                    console.log(`Event data string: ${dataStr}`);
+                                    
                                     // Add raw event to panel
                                     addRawEvent(eventType, dataStr);
                                     
                                     try {
                                         const data = JSON.parse(dataStr);
+                                        console.log(`Parsed event data:`, data);
                                         
                                         switch (eventType) {
                                             case 'streaming_content':
                                                 if (data.content) {
-                                                    // If there was a non-streaming event between streaming events, create a new bubble
-                                                    if (lastEventType && lastEventType !== 'streaming_content') {
+                                                    // Create new bubble after tool events
+                                                    if (!currentContentDiv || 
+                                                        (lastEventType && ['tool_result', 'agent_thinking'].includes(lastEventType))) {
                                                         // Create a new assistant message bubble
                                                         currentMessageDiv = document.createElement('div');
                                                         currentMessageDiv.className = 'message assistant';
                                                         currentContentDiv = document.createElement('div');
                                                         currentContentDiv.className = 'message-content';
                                                         currentContentDiv.textContent = '';
+                                                        currentContentDiv.setAttribute('data-streaming', 'true');
+                                                        currentContentDiv.setAttribute('data-stream-index', allStreamingDivs.length.toString());
                                                         currentMessageDiv.appendChild(currentContentDiv);
                                                         chatMessages.appendChild(currentMessageDiv);
+                                                        
+                                                        // Track this streaming div
+                                                        allStreamingDivs.push(currentContentDiv);
                                                     }
                                                     
                                                     currentContentDiv.textContent += data.content;
+                                                    console.log(`Streaming content added: "${data.content}", Total length: ${currentContentDiv.textContent.length}`);
                                                     scrollToBottom();
                                                 }
                                                 break;
                                             
                                             case 'agent_thinking':
+                                                console.log('Received agent_thinking event:', data);
                                                 // Pass the entire data object to handle different structures
                                                 addToolThinking(data);
-                                                break;
-                                            
-                                            case 'tool_result':
-                                                if (data.tool && data.result) {
-                                                    addToolResult(data.tool, data.result);
+                                                // DON'T clear currentContentDiv - we want to continue adding content to the same bubble
+                                                // Just mark that we've seen a tool thinking event
+                                                if (currentContentDiv) {
+                                                    currentContentDiv.setAttribute('data-had-tool', 'true');
                                                 }
                                                 break;
                                             
+                                            case 'tool_result':
+                                                if ((data.tool || data.name) && data.result) {
+                                                    addToolResult(data.tool || data.name, data.result);
+                                                }
+                                                // DON'T clear currentContentDiv - we want to continue adding content to the same bubble
+                                                if (currentContentDiv) {
+                                                    currentContentDiv.setAttribute('data-had-tool', 'true');
+                                                }
+                                                break;
+                                            
+                                            case 'final_message':
+                                                // Handle final_message event - contains the complete streamed content
+                                                console.log('Received final_message event:', data);
+                                                
+                                                if (data.content && currentContentDiv) {
+                                                    // Update the current streaming message with the final content
+                                                    currentContentDiv.textContent = data.content;
+                                                    currentContentDiv.removeAttribute('data-streaming');
+                                                    
+                                                    // Visual feedback that message is complete
+                                                    currentContentDiv.style.transition = 'background-color 0.3s';
+                                                    currentContentDiv.style.backgroundColor = '#f0fdf4';
+                                                    setTimeout(() => {
+                                                        currentContentDiv.style.backgroundColor = '';
+                                                    }, 300);
+                                                    
+                                                    console.log('Updated message with final content');
+                                                } else if (data.content && !currentContentDiv) {
+                                                    // No current streaming div, create a new complete message
+                                                    console.log('Creating new message with final content');
+                                                    const messageDiv = document.createElement('div');
+                                                    messageDiv.className = 'message assistant';
+                                                    const contentDiv = document.createElement('div');
+                                                    contentDiv.className = 'message-content';
+                                                    contentDiv.textContent = data.content;
+                                                    messageDiv.appendChild(contentDiv);
+                                                    chatMessages.appendChild(messageDiv);
+                                                    scrollToBottom();
+                                                }
+                                                
+                                                // Clear current content div as this message is complete
+                                                currentContentDiv = null;
+                                                break;
+                                            
                                             case 'final_response':
+                                                // Final response with usage information
+                                                console.log('Received final_response event:', data);
+                                                
+                                                // If there's content and no final_message was sent, handle it here
+                                                if (data.content && currentContentDiv) {
+                                                    currentContentDiv.textContent = data.content;
+                                                    currentContentDiv.removeAttribute('data-streaming');
+                                                    
+                                                    // Visual feedback
+                                                    currentContentDiv.style.transition = 'background-color 0.3s';
+                                                    currentContentDiv.style.backgroundColor = '#f0fdf4';
+                                                    setTimeout(() => {
+                                                        currentContentDiv.style.backgroundColor = '';
+                                                    }, 300);
+                                                }
+                                                
                                                 if (data.usage) {
                                                     addUsageInfo(data.usage);
                                                 }
@@ -784,8 +1174,6 @@
                                         console.error('Error parsing data:', e, dataStr);
                                     }
                                 }
-                                // Skip the data line since we've already processed it
-                                i++;
                             }
                         }
                     }
@@ -801,6 +1189,8 @@
                 currentMessageDiv = null;
                 currentContentDiv = null;
                 lastEventType = null;
+                currentAssistantMessage = null;
+                allStreamingDivs = []; // Clear the tracking array
             }
         }
 
@@ -811,6 +1201,11 @@
                 chatInput.value = '';
                 await sendMessage(message);
             }
+        });
+
+        // Reset button click handler
+        resetButton.addEventListener('click', async () => {
+            await resetConversation();
         });
 
         // Auto-focus input

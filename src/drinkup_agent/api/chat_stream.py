@@ -1,13 +1,16 @@
 """Streaming chat API endpoint for real-time tool execution display."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 import logging
 
 from ..models.chat import ChatV2Request, ChatParams
 from ..services.langgraph_agent_service_streaming import StreamingLangGraphAgentService
+from ..services.conversation_service import ConversationService
+from ..tools.mem0_tools import Mem0Manager
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -112,6 +115,7 @@ async def chat_stream(request: Dict[str, Any]):
                 user_info=user_info,
                 image_attachments=image_attachments,
             ):
+                logger.info(f"Event: {event}")
                 # Format as Server-Sent Event
                 event_type = event["type"]
                 event_data = json.dumps(event["data"], ensure_ascii=False)
@@ -156,3 +160,103 @@ async def chat_stream(request: Dict[str, Any]):
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
         },
     )
+
+
+@router.post("/workflow/conversation/save-to-memory")
+async def save_conversation_to_memory(request: Dict[str, Any]):
+    """
+    Save all messages from a conversation to user's mem0 memory.
+
+    Request body:
+    {
+        "conversationId": "conversation_id",
+        "userId": "user_id"
+    }
+
+    Returns:
+    {
+        "status": "success",
+        "messages_saved": <number of messages>,
+        "memory_ids": [<list of created memory IDs>]
+    }
+    """
+    try:
+        # Extract parameters
+        conversation_id = request.get("conversationId", request.get("conversation_id"))
+        user_id = request.get("userId", request.get("user_id"))
+
+        if not conversation_id:
+            raise HTTPException(status_code=400, detail="conversationId is required")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="userId is required")
+
+        logger.info(
+            f"Saving conversation {conversation_id} to memory for user {user_id}"
+        )
+
+        # Get conversation history
+        conversation_service = ConversationService()
+        messages = await conversation_service.get_messages(conversation_id)
+
+        if not messages:
+            return {
+                "status": "success",
+                "messages_saved": 0,
+                "memory_ids": [],
+                "message": "No messages found in conversation",
+            }
+
+        # Initialize Mem0 manager
+        # Prepare vector store configuration for Milvus
+        vector_store_config = {
+            "type": "milvus",
+            "url": settings.milvus_url,
+            "token": settings.milvus_token,
+            "collection_name": settings.milvus_collection_name,
+            "db_name": settings.milvus_db_name,
+            "embedding_model": settings.embedding_model,
+            "embedding_dims": settings.embedding_dims,
+        }
+
+        mem0_manager = Mem0Manager(settings.openai_api_key, vector_store_config)
+
+        if not mem0_manager.is_enabled():
+            raise HTTPException(
+                status_code=500, detail="Memory service is not available"
+            )
+
+        # Add all messages directly to memory
+        try:
+            # Pass all messages directly to mem0
+            result = mem0_manager.memory.add(messages=messages, user_id=user_id)
+
+            # Extract memory IDs from result
+            memory_ids = []
+            if result:
+                if isinstance(result, list):
+                    for item in result:
+                        if isinstance(item, dict) and "id" in item:
+                            memory_ids.append(item["id"])
+                elif isinstance(result, dict) and "id" in result:
+                    memory_ids.append(result["id"])
+
+            messages_saved = len(messages)
+
+        except Exception as e:
+            logger.error(f"Error adding messages to memory: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to save messages to memory: {str(e)}"
+            )
+
+        return {
+            "status": "success",
+            "messages_saved": messages_saved,
+            "memory_ids": memory_ids,
+            "message": f"Successfully saved {messages_saved} messages to memory",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in save_conversation_to_memory: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

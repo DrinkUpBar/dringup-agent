@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 class GenerateCocktailInput(BaseModel):
-    """Input for generating a cocktail recipe."""
+    """Input for generating a cocktail recipe. If using user's stock materials, include the details in the user_demand."""
 
     user_demand: str = Field(
-        description="The user's cocktail requirements/flavor preferences (用户的调酒需求/口味偏好)"
+        description="The user's cocktail requirements & flavor preferences, and user's stock materials details"
     )
 
 
@@ -24,7 +24,7 @@ class SearchCocktailInput(BaseModel):
     """Input for searching cocktail menu."""
 
     user_input: str = Field(
-        description="The user's search query for cocktails (用户的鸡尾酒搜索查询)"
+        description="The user's search query for cocktails (鸡尾酒搜索查询)"
     )
 
 
@@ -63,7 +63,7 @@ class GenerateCocktailTool(BaseTool):
             logger.info(f"Request payload: {payload}")
 
             # Make the API call
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(
                     url, json=payload, headers={"Content-Type": "application/json"}
                 )
@@ -111,7 +111,6 @@ class SearchCocktailTool(BaseTool):
     description: str = (
         "Search for cocktails from the menu to get a list of cocktail options. "
         "Use this when the user wants to search cocktail menu, browse available cocktails, "
-        "find specific types of cocktails, or explore multiple cocktail options. "
         "Input should be the user's search query in natural language."
     )
     args_schema: Type[BaseModel] = SearchCocktailInput
@@ -135,7 +134,7 @@ class SearchCocktailTool(BaseTool):
             logger.info(f"Request payload: {payload}")
 
             # Make the API call
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(
                     url, json=payload, headers={"Content-Type": "application/json"}
                 )
