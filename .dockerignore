@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Python artifacts
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage*
+.hypothesis/
+
+# Environments
+.env
+.env.*
+.venv
+venv
+
+# Build caches
+.cnb-cache
+dist
+build
+
+# OS / Editor
+.DS_Store
+*.swp
+*.swo
+.idea
+.vscode
+
+# Node
+node_modules
+
