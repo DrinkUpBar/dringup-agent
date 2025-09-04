@@ -16,6 +16,9 @@ class ImageAttachment(BaseModel):
 
     image_base64: str = Field(..., description="Base64 encoded image data")
     mime_type: Optional[str] = Field("image/jpeg", description="MIME type of the image")
+    
+    class Config:
+        populate_by_name = True
 
 
 class ChatParams(BaseModel):

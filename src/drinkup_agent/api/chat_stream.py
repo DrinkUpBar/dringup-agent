@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import json
 import logging
 
@@ -72,10 +72,12 @@ async def chat_stream(request: Dict[str, Any]):
                         "conversationId", request.get("conversation_id")
                     ),
                     params=ChatParams(
-                        user_stock=request.get("params", {}).get("userStock", ""),
-                        user_info=request.get("params", {}).get("userInfo", ""),
+                        user_stock=request.get("params", {}).get("userStock", "") or request.get("params", {}).get("user_stock", ""),
+                        user_info=request.get("params", {}).get("userInfo", "") or request.get("params", {}).get("user_info", ""),
                         image_attachment_list=request.get("params", {}).get(
                             "imageAttachmentList"
+                        ) or request.get("params", {}).get(
+                            "image_attachment_list"
                         ),
                     )
                     if "params" in request

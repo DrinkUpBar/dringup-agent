@@ -150,13 +150,38 @@ Respond naturally without JSON formatting."""
                             )
                         )
 
-            # Handle image attachments
+            # Build message content with images if provided
             if image_attachments:
-                image_note = f" [User shared {len(image_attachments)} image(s)]"
-                user_message = user_message + image_note
-
-            # Add user message to history
-            chat_history.append(HumanMessage(content=user_message))
+                # Create multimodal content for vision models
+                message_content = [
+                    {"type": "text", "text": user_message}
+                ]
+                
+                # Add each image to the content
+                for attachment in image_attachments:
+                    # Handle both dict and ImageAttachment object
+                    if hasattr(attachment, 'image_base64'):
+                        # It's an ImageAttachment object
+                        mime_type = attachment.mime_type or 'image/jpeg'
+                        image_base64 = attachment.image_base64
+                    else:
+                        # It's a dictionary
+                        mime_type = attachment.get('mime_type', 'image/jpeg')
+                        image_base64 = attachment.get('image_base64')
+                    
+                    image_data = {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{image_base64}"
+                        }
+                    }
+                    message_content.append(image_data)
+                
+                # Add user message with multimodal content to history
+                chat_history.append(HumanMessage(content=message_content))
+            else:
+                # Add plain text message to history
+                chat_history.append(HumanMessage(content=user_message))
 
             # Get tools and system prompt
             tools = await self._get_tools(user_id)
