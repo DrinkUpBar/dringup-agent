@@ -16,6 +16,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _sanitize_for_log(data: Any) -> Any:
+    """Sanitize data for logs by replacing base64 fields with placeholders.
+
+    - Keeps original structure and keys intact.
+    - Replaces values for keys: "imageBase64" and "image_base64" with a placeholder.
+    - Recursively processes nested dicts and lists.
+    """
+    try:
+        from collections.abc import Mapping
+    except Exception:
+        Mapping = dict
+
+    BASE64_KEYS = {"imageBase64", "image_base64"}
+
+    def sanitize(obj: Any) -> Any:
+        if isinstance(obj, Mapping):
+            new_obj = {}
+            for k, v in obj.items():
+                if k in BASE64_KEYS:
+                    new_obj[k] = "<imageBase64 omitted>"
+                else:
+                    new_obj[k] = sanitize(v)
+            return new_obj
+        if isinstance(obj, list):
+            return [sanitize(v) for v in obj]
+        if isinstance(obj, tuple):
+            return tuple(sanitize(v) for v in obj)
+        return obj
+
+    try:
+        return sanitize(data)
+    except Exception:
+        return "<sanitized>"
+
+
 @router.post("/workflow/chat/v2/stream")
 async def chat_stream(request: Dict[str, Any]):
     """
@@ -34,8 +69,9 @@ async def chat_stream(request: Dict[str, Any]):
     logger.info(
         f"Request keys: {list(request.keys()) if isinstance(request, dict) else 'Not a dict'}"
     )
+    # Redact images from logs; only show presence/count
     logger.info(
-        f"Raw request body: {json.dumps(request, indent=2, ensure_ascii=False)}"
+        f"Raw request body (sanitized): {json.dumps(_sanitize_for_log(request), indent=2, ensure_ascii=False)}"
     )
     logger.info("=" * 50)
 
@@ -55,7 +91,10 @@ async def chat_stream(request: Dict[str, Any]):
             logger.info(
                 f"- conversationId/conversation_id: {request.get('conversationId', request.get('conversation_id', 'NOT_FOUND'))}"
             )
-            logger.info(f"- params: {request.get('params', 'NOT_FOUND')}")
+            # Sanitize params to avoid dumping base64 images
+            logger.info(
+                f"- params (sanitized): {json.dumps(_sanitize_for_log(request.get('params', 'NOT_FOUND')), ensure_ascii=False)}"
+            )
 
             # Convert to ChatV2Request model
             # Handle camelCase to snake_case conversion
@@ -84,7 +123,9 @@ async def chat_stream(request: Dict[str, Any]):
                     else ChatParams(),
                 )
                 logger.info("Successfully converted to ChatV2Request model")
-                logger.info(f"Converted model: {chat_request.model_dump()}")
+                # Sanitize converted model (only replace imageBase64 fields)
+                converted = _sanitize_for_log(chat_request.model_dump())
+                logger.info(f"Converted model (sanitized): {json.dumps(converted, ensure_ascii=False)}")
             except Exception as conversion_error:
                 logger.error(
                     f"Error converting to ChatV2Request model: {conversion_error}"
@@ -138,7 +179,7 @@ async def chat_stream(request: Dict[str, Any]):
             logger.error(f"Error message: {str(e)}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
             logger.error(
-                f"Original request that caused error: {json.dumps(request, indent=2, ensure_ascii=False)}"
+                f"Original request that caused error (sanitized): {json.dumps(_sanitize_for_log(request), indent=2, ensure_ascii=False)}"
             )
             logger.error("=" * 50)
 
