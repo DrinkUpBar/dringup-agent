@@ -20,6 +20,14 @@ class GenerateCocktailInput(BaseModel):
     )
 
 
+class SearchCocktailInput(BaseModel):
+    """Input for searching cocktail menu."""
+
+    user_input: str = Field(
+        description="The user's search query for cocktails (用户的鸡尾酒搜索查询)"
+    )
+
+
 class GenerateCocktailTool(BaseTool):
     """Tool for generating cocktail recipes using DrinkUp backend."""
 
@@ -96,6 +104,73 @@ class GenerateCocktailTool(BaseTool):
             return f"An unexpected error occurred: {str(e)}"
 
 
+class SearchCocktailTool(BaseTool):
+    """Tool for searching cocktails from the menu."""
+
+    name: str = "search_cocktail"
+    description: str = (
+        "Search for cocktails from the menu to get a list of cocktail options. "
+        "Use this when the user wants to search cocktail menu, browse available cocktails, "
+        "find specific types of cocktails, or explore multiple cocktail options. "
+        "Input should be the user's search query in natural language."
+    )
+    args_schema: Type[BaseModel] = SearchCocktailInput
+
+    def _run(self, user_input: str) -> str:
+        """Execute the tool synchronously."""
+        import asyncio
+
+        return asyncio.run(self._arun(user_input))
+
+    async def _arun(self, user_input: str) -> str:
+        """Search cocktails from the menu."""
+        try:
+            # Prepare the request according to OpenAPI spec
+            url = f"{settings.drinkup_backend_url}/api/workflow/cocktail"
+            payload = {
+                "userInput": user_input,
+            }
+
+            logger.info(f"Calling DrinkUp cocktail workflow API: {url}")
+            logger.info(f"Request payload: {payload}")
+
+            # Make the API call
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    url, json=payload, headers={"Content-Type": "application/json"}
+                )
+
+                # Check response status
+                if response.status_code != 200:
+                    logger.error(
+                        f"API call failed with status {response.status_code}: {response.text}"
+                    )
+                    return f"Failed to process cocktail request. Status: {response.status_code}"
+
+                # Parse response
+                result = response.json()
+
+                # Check business status code
+                if result.get("code") != 0:
+                    error_msg = result.get("message", "Unknown error")
+                    logger.error(f"Business error: {error_msg}")
+                    return f"Error processing cocktail request: {error_msg}"
+
+                # Return the raw response data as JSON string
+                logger.info("Successfully searched cocktails from menu")
+                return json.dumps(result, ensure_ascii=False)
+
+        except httpx.TimeoutException:
+            logger.error("Request timeout when searching cocktails")
+            return "Request timeout. The backend service might be slow or unavailable."
+        except httpx.RequestError as e:
+            logger.error(f"Request error: {str(e)}")
+            return f"Failed to connect to backend service: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error searching cocktails: {str(e)}")
+            return f"An unexpected error occurred: {str(e)}"
+
+
 def create_drinkup_backend_tools(user_id: Optional[str] = None) -> list:
     """Create and return DrinkUp backend tools.
 
@@ -111,7 +186,10 @@ def create_drinkup_backend_tools(user_id: Optional[str] = None) -> list:
             logger.warning(f"Invalid user_id format: {user_id}, using default")
             user_id_int = None
 
-    tools = [GenerateCocktailTool(user_id=user_id_int)]
+    tools = [
+        GenerateCocktailTool(user_id=user_id_int),
+        SearchCocktailTool(),
+    ]
 
     logger.info(f"Created {len(tools)} DrinkUp backend tools for user_id: {user_id}")
     return tools

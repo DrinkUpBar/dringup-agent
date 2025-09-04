@@ -177,7 +177,17 @@
             margin: 10px 0;
             border-radius: 5px;
             font-size: 13px;
+        }
+        
+        .tool-thinking pre,
+        .tool-result pre {
+            margin: 5px 0;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+            overflow-x: auto;
             white-space: pre-wrap;
+            word-break: break-word;
         }
 
         .typing-indicator {
@@ -563,14 +573,32 @@
             scrollToBottom();
         }
 
-        function addToolThinking(toolCalls) {
+        function addToolThinking(data) {
             const div = document.createElement('div');
             div.className = 'tool-thinking';
-            const toolInfo = toolCalls.map(tc => {
-                const args = tc.args ? JSON.stringify(tc.args, null, 2) : '{}';
-                return `🤔 Thinking: Using tool <strong>${tc.name}</strong>\nArguments: ${args}`;
-            }).join('\n\n');
-            div.innerHTML = toolInfo;
+            
+            let content = '';
+            
+            // Handle both tool_calls array and direct data
+            if (data.tool_calls && Array.isArray(data.tool_calls)) {
+                const toolInfo = data.tool_calls.map(tc => {
+                    const args = tc.args ? JSON.stringify(tc.args, null, 2) : '{}';
+                    return `🤔 Thinking: Using tool <strong>${tc.name || tc.tool}</strong><br>Arguments: <pre>${args}</pre>`;
+                }).join('<br><br>');
+                content = toolInfo;
+            } else if (data.tool) {
+                // Handle single tool call
+                const args = data.args ? JSON.stringify(data.args, null, 2) : '{}';
+                content = `🤔 Thinking: Using tool <strong>${data.tool}</strong><br>Arguments: <pre>${args}</pre>`;
+            } else if (data.content) {
+                // Handle thinking content
+                content = `🤔 ${data.content}`;
+            } else {
+                // Fallback to showing raw data
+                content = `🤔 Thinking: <pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            div.innerHTML = content;
             chatMessages.appendChild(div);
             scrollToBottom();
         }
@@ -578,7 +606,8 @@
         function addToolResult(tool, result) {
             const div = document.createElement('div');
             div.className = 'tool-result';
-            div.innerHTML = `🔧 Tool Result from <strong>${tool}</strong>:\n${result}`;
+            const resultText = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+            div.innerHTML = `🔧 Tool Result from <strong>${tool}</strong>:<br><pre>${resultText}</pre>`;
             chatMessages.appendChild(div);
             scrollToBottom();
         }
@@ -728,9 +757,8 @@
                                                 break;
                                             
                                             case 'agent_thinking':
-                                                if (data.tool_calls) {
-                                                    addToolThinking(data.tool_calls);
-                                                }
+                                                // Pass the entire data object to handle different structures
+                                                addToolThinking(data);
                                                 break;
                                             
                                             case 'tool_result':
