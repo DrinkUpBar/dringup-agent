@@ -1,5 +1,6 @@
 """Database connection and session management."""
 
+from urllib.parse import quote_plus
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from ..config import settings
@@ -7,9 +8,9 @@ from ..config import settings
 # Create base class for models
 Base = declarative_base()
 
-# Create database URL
+# Create database URL with properly encoded password
 DATABASE_URL = (
-    f"mysql+aiomysql://{settings.mysql_user}:{settings.mysql_password}"
+    f"mysql+aiomysql://{settings.mysql_user}:{quote_plus(settings.mysql_password)}"
     f"@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}"
 )
 
