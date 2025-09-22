@@ -85,13 +85,21 @@ class GenerateCocktailTool(BaseTool):
                     return f"Error generating cocktail: {error_msg}"
 
                 # Extract cocktail data
-                cocktail = result.get("data", {})
+                cocktail_data = result.get("data", {})
 
-                # Return the raw JSON data as a string
-                logger.info(
-                    f"Successfully generated cocktail: {cocktail.get('name', 'Unknown')}"
-                )
-                return json.dumps(cocktail, ensure_ascii=False)
+                # Return the raw JSON data as a string (whether it's array or object)
+                if isinstance(cocktail_data, list) and len(cocktail_data) > 0:
+                    logger.info(
+                        f"Successfully generated {len(cocktail_data)} cocktail(s)"
+                    )
+                elif isinstance(cocktail_data, dict) and cocktail_data:
+                    logger.info(
+                        f"Successfully generated cocktail: {cocktail_data.get('name', 'Unknown')}"
+                    )
+                else:
+                    logger.info("No cocktail data received")
+
+                return json.dumps(cocktail_data, ensure_ascii=False)
 
         except httpx.TimeoutException:
             logger.error("Request timeout when calling DrinkUp backend")
