@@ -25,17 +25,25 @@ class Mem0Manager:
         self,
         api_key: Optional[str] = None,
         vector_store_config: Optional[Dict[str, Any]] = None,
+        embedding_api_key: Optional[str] = None,
+        embedding_base_url: Optional[str] = None,
     ):
         """Initialize Mem0 manager with optional vector store configuration (Milvus or Memgraph)."""
-        self.enabled = bool(api_key)
+        self.enabled = bool(api_key or embedding_api_key)  # Enable if either key is provided
         if self.enabled:
             try:
-                # Set the OpenAI API key in environment for Mem0
+                # Set the API keys in environment for Mem0
                 import os
 
-                os.environ["OPENAI_API_KEY"] = api_key
-                # Ensure OPENAI_BASE_URL is used instead of deprecated OPENAI_API_BASE
-                if "OPENAI_API_BASE" in os.environ:
+                # Use embedding-specific API key if provided, otherwise fall back to general API key
+                effective_api_key = embedding_api_key or api_key
+                if effective_api_key:
+                    os.environ["OPENAI_API_KEY"] = effective_api_key
+
+                # Set base URL for embeddings if provided
+                if embedding_base_url:
+                    os.environ["OPENAI_BASE_URL"] = embedding_base_url
+                elif "OPENAI_API_BASE" in os.environ:
                     os.environ["OPENAI_BASE_URL"] = os.environ.pop("OPENAI_API_BASE")
 
                 # Check if we need to create a new Memory instance
@@ -77,7 +85,7 @@ class Mem0Manager:
                                         "model": vector_store_config.get(
                                             "embedding_model", "text-embedding-3-large"
                                         ),
-                                        "api_key": api_key,  # Pass the API key directly
+                                        "api_key": embedding_api_key or api_key,  # Use embedding API key if available
                                     },
                                 },
                                 "version": "v1.1",
@@ -110,7 +118,7 @@ class Mem0Manager:
                                         "model": vector_store_config.get(
                                             "embedding_model", "text-embedding-3-large"
                                         ),
-                                        "api_key": api_key,
+                                        "api_key": embedding_api_key or api_key,  # Use embedding API key if available
                                         "embedding_dims": 1536,
                                     },
                                 },
@@ -404,6 +412,11 @@ def create_mem0_tools(api_key: Optional[str], user_id: str) -> List[BaseTool]:
     # Use Milvus as the primary vector store
     use_milvus = True  # Enable Milvus for persistent memory storage
 
+    # Use mem0-specific embedding settings if available, otherwise fall back to general settings
+    embedding_model = settings.mem0_embedding_model or settings.embedding_model
+    embedding_api_key = settings.mem0_embedding_api_key
+    embedding_base_url = settings.mem0_embedding_base_url
+
     if use_milvus:
         vector_store_config = {
             "type": "milvus",
@@ -411,7 +424,7 @@ def create_mem0_tools(api_key: Optional[str], user_id: str) -> List[BaseTool]:
             "token": settings.milvus_token,
             "collection_name": settings.milvus_collection_name,
             "db_name": settings.milvus_db_name,
-            "embedding_model": settings.embedding_model,
+            "embedding_model": embedding_model,
             "embedding_dims": settings.embedding_dims,
         }
         logger.info("Using Milvus vector store for Mem0")
@@ -421,14 +434,19 @@ def create_mem0_tools(api_key: Optional[str], user_id: str) -> List[BaseTool]:
             "url": settings.memgraph_url,
             "username": settings.memgraph_username,
             "password": settings.memgraph_password,
-            "embedding_model": settings.embedding_model,
+            "embedding_model": embedding_model,
         }
         logger.info("Using Memgraph configuration for Mem0")
     else:
         logger.info("Using default Mem0 storage (SQLite + ChromaDB)")
 
-    # Create shared Mem0 manager with vector store config
-    manager = Mem0Manager(api_key, vector_store_config)
+    # Create shared Mem0 manager with vector store config and embedding API settings
+    manager = Mem0Manager(
+        api_key,
+        vector_store_config,
+        embedding_api_key=embedding_api_key,
+        embedding_base_url=embedding_base_url
+    )
 
     # Create and configure tools - they inherit name and description from class attributes
     tools = []

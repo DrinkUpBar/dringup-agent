@@ -3,12 +3,11 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 
-# Load .env into process env so third-party libs (e.g., LangSmith/LangChain)
-# can read variables directly from the environment as well.
+# Load .env with override=True to ensure .env file values take precedence over environment variables
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(override=True)
 except Exception:
     # If python-dotenv is not available, pydantic-settings will still read
     # values from the .env file for this Settings model.
@@ -16,7 +15,7 @@ except Exception:
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Application settings loaded from .env file with priority over environment variables."""
 
     # OpenAI Configuration
     openai_api_key: str
@@ -34,6 +33,11 @@ class Settings(BaseSettings):
     mem0_api_key: Optional[str] = None
     mem0_base_url: Optional[str] = "https://api.mem0.ai"
 
+    # Mem0 Embedding API Configuration (separate from main OpenAI config)
+    mem0_embedding_api_key: Optional[str] = None
+    mem0_embedding_base_url: Optional[str] = None
+    mem0_embedding_model: str = "text-embedding-3-large"
+
     # Milvus Configuration for Mem0 Vector Store
     milvus_url: str = "http://localhost:19530"  # Milvus server URL
     milvus_token: Optional[str] = (
@@ -47,7 +51,7 @@ class Settings(BaseSettings):
     memgraph_username: str = "memgraph"
     memgraph_password: str = ""
 
-    # OpenAI Embedding Configuration for Mem0
+    # OpenAI Embedding Configuration for Mem0 (deprecated, use mem0_embedding_* instead)
     embedding_model: str = "text-embedding-3-large"
     embedding_dims: int = 1536  # Dimensions for embedding model
 
@@ -75,6 +79,7 @@ class Settings(BaseSettings):
     debug: bool = False
 
     class Config:
+        # Priority: .env file values override environment variables
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
