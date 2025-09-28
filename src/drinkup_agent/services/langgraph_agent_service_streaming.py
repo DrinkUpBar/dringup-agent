@@ -113,8 +113,12 @@ Respond naturally without JSON formatting."""
         """
         Process a chat message with character-level streaming.
         """
+        # Generate conversation_id if not provided (first message scenario)
+        is_new_conversation = False
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
+            is_new_conversation = True
+            logger.info(f"Generated new conversation_id: {conversation_id}")
 
         try:
             # Prepare a LangChain/LangSmith run config so all runs carry the same thread ID
@@ -125,12 +129,20 @@ Respond naturally without JSON formatting."""
                     "conversation_id": conversation_id,  # Also store for convenience/queries
                 }
             }
+
+            # If this is a new conversation, immediately save the user message
+            if is_new_conversation:
+                logger.info(f"Saving first user message to conversation {conversation_id}")
+                await self.conversation_service.add_message(conversation_id, "user", user_message)
+
             # Prepare chat history (past conversation + current user message)
             past_messages = await self.conversation_service.get_messages(conversation_id)
             chat_history = self._convert_history_to_langchain(past_messages)
 
+            # Only append current user message if it's not already in history
             user_msg = self._build_user_message(user_message, image_attachments)
-            chat_history.append(user_msg)
+            if not is_new_conversation:
+                chat_history.append(user_msg)
 
             # Get tools and system prompt
             tools = await self._get_tools(user_id)
@@ -168,6 +180,8 @@ Respond naturally without JSON formatting."""
                     usage_data = chunk.response_metadata["token_usage"]
 
                 if hasattr(chunk, "tool_calls") and chunk.tool_calls:
+                    # Mark that tool calls are present, but do not emit yet.
+                    # We will wait until the tool call arguments are fully accumulated.
                     is_tool_call = True
                 elif hasattr(chunk, "content") and chunk.content:
                     content_chunk = chunk.content
@@ -179,11 +193,11 @@ Respond naturally without JSON formatting."""
 
             # If the model decided to call tools, surface and execute them
             if is_tool_call and accumulated_message and hasattr(accumulated_message, "tool_calls"):
-                tool_calls_data = self._extract_tool_calls_for_thinking(accumulated_message)
-
                 # Save AI message with tool calls to conversation
                 await self._save_ai_message_with_tool_calls(conversation_id, accumulated_message)
 
+                # Emit agent_thinking after all tool call params are fully collected
+                tool_calls_data = self._extract_tool_calls_for_thinking(accumulated_message)
                 if tool_calls_data:
                     yield {"type": "agent_thinking", "data": {"tool_calls": tool_calls_data}}
 
@@ -225,8 +239,10 @@ Respond naturally without JSON formatting."""
                 usage_data = self._merge_usage(usage_data, final_usage_data)
                 full_content = final_content or full_content
 
-            # Persist conversation turns
-            await self._save_conversation_turn(conversation_id, user_message, full_content)
+            # Persist conversation turns (user message already saved if new conversation)
+            if not is_new_conversation:
+                await self.conversation_service.add_message(conversation_id, "user", user_message)
+            await self.conversation_service.add_message(conversation_id, "assistant", full_content)
 
             # Compute usage for final response
             usage = (
@@ -418,9 +434,6 @@ Respond naturally without JSON formatting."""
             }
         return second or first
 
-    async def _save_conversation_turn(self, conversation_id: str, user_message: str, assistant_content: str) -> None:
-        await self.conversation_service.add_message(conversation_id, "user", user_message)
-        await self.conversation_service.add_message(conversation_id, "assistant", assistant_content)
 
     def _usage_from_provider(self, usage_data: Dict[str, Any]) -> Dict[str, int]:
         return {

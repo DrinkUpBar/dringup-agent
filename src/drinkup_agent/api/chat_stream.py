@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any
 import json
+import asyncio
 import logging
 
 from ..models.chat import ChatV2Request, ChatParams
@@ -166,6 +167,10 @@ async def chat_stream(request: Dict[str, Any]):
                 yield f"event: {event_type}\n"
                 yield f"data: {event_data}\n\n"
 
+                # Ensure 'agent_thinking' is flushed to the client before tool execution proceeds
+                if event_type == "agent_thinking":
+                    await asyncio.sleep(0)
+
                 # If this is the final response or error, we're done
                 if event_type in ["final_response", "error"]:
                     break
@@ -203,6 +208,51 @@ async def chat_stream(request: Dict[str, Any]):
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
         },
     )
+
+
+@router.get("/workflow/conversation/{conversation_id}/history")
+async def get_conversation_history(conversation_id: str):
+    """
+    Get conversation history by conversation ID.
+
+    Path parameter:
+    - conversation_id: The ID of the conversation
+
+    Returns:
+    {
+        "status": "success",
+        "conversation_id": "conversation_id",
+        "messages": [<list of messages in the conversation>],
+        "message_count": <number of messages>
+    }
+    """
+    try:
+        logger.info(f"Getting conversation history for: {conversation_id}")
+
+        conversation_service = ConversationService()
+        messages = await conversation_service.get_messages(conversation_id)
+
+        if not messages:
+            return {
+                "status": "success",
+                "conversation_id": conversation_id,
+                "messages": [],
+                "message_count": 0,
+                "message": "No messages found in conversation"
+            }
+
+        logger.info(f"Found {len(messages)} messages for conversation {conversation_id}")
+
+        return {
+            "status": "success",
+            "conversation_id": conversation_id,
+            "messages": messages,
+            "message_count": len(messages)
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting conversation history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/workflow/conversation/save-to-memory")
