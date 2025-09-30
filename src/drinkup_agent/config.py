@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
+    redis_username: Optional[str] = None
+    redis_password: Optional[str] = None
 
     # MySQL Configuration
     mysql_host: str = "localhost"

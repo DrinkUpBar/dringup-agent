@@ -16,12 +16,21 @@ class ConversationService:
     def _init_redis(self):
         """Initialize Redis connection."""
         try:
-            self.redis_client = redis.Redis(
-                host=settings.redis_host,
-                port=settings.redis_port,
-                db=settings.redis_db,
-                decode_responses=True,
-            )
+            # Reason: Build Redis connection parameters with optional authentication
+            redis_kwargs = {
+                "host": settings.redis_host,
+                "port": settings.redis_port,
+                "db": settings.redis_db,
+                "decode_responses": True,
+            }
+
+            # Add username and password if provided
+            if settings.redis_username:
+                redis_kwargs["username"] = settings.redis_username
+            if settings.redis_password:
+                redis_kwargs["password"] = settings.redis_password
+
+            self.redis_client = redis.Redis(**redis_kwargs)
         except Exception as e:
             print(f"Redis initialization failed: {e}")
             # Fallback to in-memory storage if Redis is not available
