@@ -63,7 +63,7 @@ class GenerateCocktailTool(BaseTool):
             logger.info(f"Request payload: {payload}")
 
             # Make the API call
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     url, json=payload, headers={"Content-Type": "application/json"}
                 )
