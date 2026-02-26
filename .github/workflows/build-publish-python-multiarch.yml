@@ -1,6 +1,7 @@
 name: Build and Publish Python Multi‑Arch Image
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "dev" ]
     tags:     [ "v*" ]
