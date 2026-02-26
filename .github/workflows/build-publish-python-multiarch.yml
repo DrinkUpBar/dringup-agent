@@ -32,7 +32,16 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      # ───────── 3. 登录镜像仓库 ─────────
+      # ───────── 3. 调试 Registry 连通性 ─────────
+      - name: Debug registry connectivity
+        run: |
+          echo "=== Registry: ${{ secrets.DOCKER_REGISTRY }} ==="
+          echo "--- HTTP Headers ---"
+          curl -sI "https://${{ secrets.DOCKER_REGISTRY }}/v2/" || true
+          echo "--- Response Body (first 30 lines) ---"
+          curl -s "https://${{ secrets.DOCKER_REGISTRY }}/v2/" | head -30 || true
+
+      # ───────── 4. 登录镜像仓库 ─────────
       - uses: docker/login-action@v3
         with:
           registry: ${{ secrets.DOCKER_REGISTRY }}
